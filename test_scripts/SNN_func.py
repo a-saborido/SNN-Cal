@@ -12,7 +12,8 @@ from tqdm import tqdm
 from torchmetrics.classification import MulticlassConfusionMatrix
 from matplotlib.colors import SymLogNorm
 
-device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+device = torch.device("cpu")
+#device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 #if torch.backends.mps.is_available():
 #    device = torch.device("mps")
 #    torch.set_default_dtype(torch.float32)
