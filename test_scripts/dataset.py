@@ -28,6 +28,7 @@ def readfile(filename, primary_only):
   sE_list = []
   N_list  = []
   p_class = []
+  cub_id_list = []
   if not primary_only:
     primary_list = []
 
@@ -54,7 +55,7 @@ def readfile(filename, primary_only):
 
       # Read cublet_id
       cublet_id = struct.unpack('i', file.read(4))[0]
-      
+      cub_id_list.append(cublet_id)
       # Read total energy released
       E_list.append(struct.unpack('d', file.read(8))[0])
       
@@ -82,7 +83,7 @@ def readfile(filename, primary_only):
 
       data = file.read(4)
 
-  res = [ph_list, E_list, ct_list, sE_list, N_list, p_class]
+  res = [ph_list, E_list, ct_list, sE_list, N_list, p_class, cub_id_list]
   if not primary_only:
     res.append(primary_list)
 
@@ -114,7 +115,8 @@ class CustomDataset(Dataset):
             "dispersion":3,
             "N_int":4,
             "particle":5,
-            "primary":6
+			"cublet":6,
+            "primary":7
         }
         
         samples = []
