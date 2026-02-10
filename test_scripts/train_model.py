@@ -12,6 +12,8 @@ from snntorch import surrogate
 
 from typing import Callable
 import numpy as np
+import matplotlib.pyplot as plt
+
 
 def spikegen_multi(data, multiplicity=4):
     og_shape = data.shape
@@ -75,10 +77,14 @@ def main() -> None:
                        target=data_file["target_name"])
     ds.data = list(zip(samples, targets))
 
+    # Fix seed for consistency with print_predictions.py
+    seed = 42
+    g = torch.Generator().manual_seed(seed)
+
     tr_len = int(0.70*len(ds))
     va_len = int(0.15*len(ds))
     te_len = len(ds) - tr_len - va_len
-    tr_ds, va_ds, te_ds = random_split(ds, [tr_len, va_len, te_len])
+    tr_ds, va_ds, te_ds = random_split(ds, [tr_len, va_len, te_len], generator=g)
 
     tr_loader = DataLoader(tr_ds, batch_size=args.batch, shuffle=True)
     va_loader = DataLoader(va_ds, batch_size=args.batch)
@@ -117,6 +123,7 @@ def main() -> None:
 
     # plot loss function
     train_Epos_spk.plot_loss(validation=True, logscale=True)
+    plt.savefig("loss.png", dpi=300, bbox_inches="tight")
 
     # save
     torch.save(net_Epos_spk.state_dict(), args.model_out)

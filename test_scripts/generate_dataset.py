@@ -45,7 +45,8 @@ ds = build_dataset(args.data_dir,
                    max_files=args.max_files,
                    primary_only=False,                         # set to True if including only primary cubelets!
                    target=tgt_arg,
-                   energy_threshold=150)                       # tune this as needed
+                   energy_threshold=10
+                   )                       # tune this as needed
 
 # ------------------------- flatten helper -------------------------
 def _flatten(x):

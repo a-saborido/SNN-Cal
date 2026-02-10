@@ -70,10 +70,15 @@ def main():
 
     # Split dataset (70% train, 15% val, 15% test)
     total = len(ds)
+
+    # Fix seed for consistency with train_model.py
+    seed = 42
+    g = torch.Generator().manual_seed(seed)
+
     tr_len = int(0.70 * total)
     va_len = int(0.15 * total)
     te_len = total - tr_len - va_len
-    tr_ds, va_ds, te_ds = random_split(ds, [tr_len, va_len, te_len])
+    tr_ds, va_ds, te_ds = random_split(ds, [tr_len, va_len, te_len], generator=g)
 
     tr_loader = DataLoader(tr_ds, batch_size=args.batch, shuffle=True)
     va_loader = DataLoader(va_ds, batch_size=args.batch)
@@ -106,8 +111,10 @@ def main():
     print(f"Test relative error: {train_Epos_spk.acc_hist['test'][train_Epos_spk.current_epoch] * 100}%")
     train_Epos_spk.plot_pred_vs_target(
     title=["log(E/MeV)", r"$x_c$", r"$y_c$", r"$z_c$"], nbins=50)
+    plt.savefig("pred_vs_target.png", dpi=300, bbox_inches="tight")
     train_Epos_spk.plot_residuals(
     title=["log(E/MeV)", r"$x_c$", r"$y_c$", r"$z_c$"], nbins=50)
+    plt.savefig("residuals.png", dpi=300, bbox_inches="tight")
 
     plt.show()
 if __name__ == "__main__":
