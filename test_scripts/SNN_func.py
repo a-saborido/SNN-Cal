@@ -19,6 +19,179 @@ device = torch.device("cpu")
 #    torch.set_default_dtype(torch.float32)
 
 
+# ------------------------- Trainable weighted spike encoder -------------------------
+class SurrogateHeaviside(torch.autograd.Function):
+    """
+    Forward: hard threshold (0/1)
+    Backward: surrogate gradient so the gains can learn.
+    """
+    @staticmethod
+    def forward(ctx, x, alpha: float):
+        ctx.save_for_backward(x)
+        ctx.alpha = alpha
+        return (x >= 0).to(x.dtype)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (x,) = ctx.saved_tensors
+        alpha = ctx.alpha
+        grad = alpha / (1.0 + (alpha * x).abs()).pow(2)
+        return grad_output * grad, None
+
+
+def _inv_softplus(y: float) -> float:
+    return float(np.log(np.exp(y) - 1.0))
+
+'''
+class CubeletSharedGainSpikeGenMulti(nn.Module):
+    """
+    Trainable gains per (cubelet, threshold-channel), shared across the 100 sensors.
+
+    Parameters:
+      gain_raw shape = (n_cubelets, multiplicity)
+      => total trainable parameters = 1000 * 4
+
+    Input:
+      data       : (B, T, S)
+      cubelet_id : (B,)
+
+    Output:
+      spikes     : (T, B, S*multiplicity)
+      with feature ordering: multiplicity*sensor + i
+    """
+    def __init__(self, n_cubelets: int = 1000, multiplicity: int = 4,
+                 alpha: float = 5.0, init_gain: float = 1.0, eps: float = 1e-6):
+        super().__init__()
+        self.n_cubelets = n_cubelets
+        self.multiplicity = multiplicity
+        self.alpha = float(alpha)
+        self.eps = float(eps)
+
+        init_raw = _inv_softplus(init_gain)
+        self.gain_raw = nn.Parameter(torch.full((n_cubelets, multiplicity), init_raw))
+
+        thr = torch.tensor([10.0 ** (i + 2) for i in range(multiplicity)], dtype=torch.float32)
+        self.register_buffer("thresholds", thr)
+
+    def gains(self):
+        return F.softplus(self.gain_raw) + self.eps   # (C, M)
+
+    def forward(self, data: torch.Tensor, cubelet_id: torch.Tensor) -> torch.Tensor:
+        # data: (B, T, S)
+        if data.ndim != 3:
+            raise ValueError(f"Expected data shape (B,T,S), got {tuple(data.shape)}")
+
+        B, T, S = data.shape
+        M = self.multiplicity
+
+        if cubelet_id.ndim != 1 or cubelet_id.shape[0] != B:
+            raise ValueError(f"cubelet_id must have shape (B,), got {tuple(cubelet_id.shape)}")
+
+        cubelet_id = cubelet_id.long().clamp(0, self.n_cubelets - 1)
+
+        # Select one 4-gain vector per event: (B, M)
+        g = self.gains().to(data.dtype).index_select(0, cubelet_id)   # (B, M)
+
+        # Broadcast over time and sensors:
+        # data -> (B, T, S, 1)
+        # g    -> (B, 1, 1, M)
+        x = data.unsqueeze(-1) * g.unsqueeze(1).unsqueeze(1)          # (B, T, S, M)
+
+        thr = self.thresholds.to(data.dtype).view(1, 1, 1, M)
+        spk = SurrogateHeaviside.apply(x - thr, self.alpha)           # (B, T, S, M)
+
+        # Flatten so feature index = multiplicity*sensor + i
+        spk = spk.reshape(B, T, S * M)                                # (B, T, S*M)
+        return spk.permute(1, 0, 2).contiguous()                      # (T, B, S*M)
+'''
+
+
+class CubeletOrderedThresholdSpikeGenMulti(nn.Module):
+    """
+    Trainable thresholds per (cubelet, threshold-channel), shared across the 100 sensors.
+
+    Parameters:
+      thr_exp_raw shape = (n_cubelets, multiplicity)
+      => total trainable parameters = 1000 * 4
+
+    Important:
+      The thresholds are constrained to be strictly increasing along the 4 channels:
+          th[:,0] < th[:,1] < th[:,2] < th[:,3]
+      This is done by learning positive increments in log10-space and taking a cumulative sum.
+
+    Input:
+      data       : (B, T, S)
+      cubelet_id : (B,)
+
+    Output:
+      spikes     : (T, B, S*multiplicity)
+      with feature ordering: multiplicity*sensor + i
+    """
+    def __init__(self, n_cubelets: int = 1000, multiplicity: int = 4,
+                 alpha: float = 5.0, eps: float = 1e-6):
+        super().__init__()
+        self.n_cubelets = n_cubelets
+        self.multiplicity = multiplicity
+        self.alpha = float(alpha)
+        self.eps = float(eps)
+        self.min_gap = 1e-3
+
+        # Ordered-threshold initialization in log10-space:
+        # initial thresholds are roughly [1e2, 1e3, 1e4, 1e5]
+        init_first_exp = 2.0
+        init_step_exp = 1.0
+
+        raw = torch.empty(n_cubelets, multiplicity)
+        raw[:, 0] = _inv_softplus(init_first_exp)
+        raw[:, 1:] = _inv_softplus(init_step_exp)
+
+        self.thr_exp_raw = nn.Parameter(raw)
+
+    def threshold_exponents(self):
+        # positive increments in log10-space
+        inc = F.softplus(self.thr_exp_raw) + self.min_gap   # (C, M)
+
+        # cumulative sum => strictly increasing threshold exponents
+        thr_exp = torch.cumsum(inc, dim=1) + self.eps       # (C, M)
+        return thr_exp
+
+    def thresholds(self):
+        # convert log10-thresholds to linear thresholds
+        thr_exp = self.threshold_exponents()                # (C, M)
+        th = torch.pow(10.0, thr_exp)
+        return th
+
+    def forward(self, data: torch.Tensor, cubelet_id: torch.Tensor) -> torch.Tensor:
+        # data: (B, T, S)
+        if data.ndim != 3:
+            raise ValueError(f"Expected data shape (B,T,S), got {tuple(data.shape)}")
+
+        B, T, S = data.shape
+        M = self.multiplicity
+
+        if cubelet_id.ndim != 1 or cubelet_id.shape[0] != B:
+            raise ValueError(f"cubelet_id must have shape (B,), got {tuple(cubelet_id.shape)}")
+
+        cubelet_id = cubelet_id.long().clamp(0, self.n_cubelets - 1)
+
+        # Select one 4-threshold vector per event: (B, M)
+        th = self.thresholds().to(data.dtype).index_select(0, cubelet_id)   # (B, M)
+
+        # Broadcast over time and sensors:
+        # data -> (B, T, S, 1)
+        # th   -> (B, 1, 1, M)
+        x = data.unsqueeze(-1)                                               # (B, T, S, 1)
+
+        spk = SurrogateHeaviside.apply(
+            x - th.unsqueeze(1).unsqueeze(1), self.alpha
+        )                                                                    # (B, T, S, M)
+
+        # Flatten so feature index = multiplicity*sensor + i
+        spk = spk.reshape(B, T, S * M)                                       # (B, T, S*M)
+        return spk.permute(1, 0, 2).contiguous()                             # (T, B, S*M)
+#########################################################
+
+
 ###############################################################################
 ##                                                                           ##
 ##     SPIKING NEURAL NETWORK
@@ -50,7 +223,10 @@ class Spiking_Net(nn.Module):
     def forward(self, data):
         """Forward pass for several time steps."""
 
-        x = self.spikegen_fn(data)
+        if isinstance(data, (tuple, list)) and len(data) == 2:
+            x = self.spikegen_fn(data[0], data[1])
+        else:
+            x = self.spikegen_fn(data)
 
         # Initalize membrane potential
         mem = []
@@ -215,6 +391,14 @@ class Trainer():
         for name, param in self.net.named_parameters():
             if param.requires_grad:
                 self.par_hist[name] = []
+    
+    def _unpack_batch(self, batch):
+        if isinstance(batch, (tuple, list)) and len(batch) == 3:
+            return batch[0], batch[1], batch[2]   # data, cubelet_id, targets
+        elif isinstance(batch, (tuple, list)) and len(batch) == 2:
+            return batch[0], None, batch[1]       # backward compatibility
+        else:
+            raise ValueError(f"Unexpected batch format: {type(batch)}")
 
 
     def test(self, dataset_name):
@@ -234,12 +418,15 @@ class Trainer():
         self.net.eval()
         with torch.no_grad():
             temp_loss = []
-            for data, targets in dataset:
+            for batch in dataset:
+                data, cubelet_id, targets = self._unpack_batch(batch)
                 data = data.to(device)
                 targets = targets.to(device)
+                if cubelet_id is not None:
+                    cubelet_id = cubelet_id.to(device)
 
                 # forward pass
-                output = self.net(data)
+                output = self.net((data, cubelet_id)) if cubelet_id is not None else self.net(data)
                 pred, acc = self.predict(output, targets)
 
                 # compute loss
@@ -271,12 +458,15 @@ class Trainer():
         for epoch in tqdm(range(num_epochs), desc="Epoch"):
             self.net.train()
             # Minibatch training loop
-            for data, targets in tqdm(self.datasets["train"], desc="Batches", leave=False):
+            for batch in tqdm(self.datasets["train"], desc="Batches", leave=False):
+                data, cubelet_id, targets = self._unpack_batch(batch)
                 data = data.to(device)
                 targets = targets.to(device)
+                if cubelet_id is not None:
+                    cubelet_id = cubelet_id.to(device)
 
                 # forward pass
-                output = self.net(data)
+                output = self.net((data, cubelet_id)) if cubelet_id is not None else self.net(data)
                 pred, _ = self.predict(output, targets)
 
                 # compute loss
@@ -333,13 +523,15 @@ class Trainer():
 
         self.net.eval()
         with torch.no_grad():
-            for data, targets in self.datasets["test"]:
+            for batch in self.datasets["test"]:
+                data, cubelet_id, targets = self._unpack_batch(batch)
                 data = data.to(device)
                 targets = targets.to(device)
+                if cubelet_id is not None:
+                    cubelet_id = cubelet_id.to(device)
 
                 # forward pass
-                output = self.net(data)
-
+                output = self.net((data, cubelet_id)) if cubelet_id is not None else self.net(data)
                 # calculate total accuracy
                 pred, _ = self.predict(output, targets)
                 cm.update(pred, targets)
@@ -353,12 +545,15 @@ class Trainer():
         all_predictions = []
         all_accuracy = []
         with torch.no_grad():
-            for data, targets in self.datasets["test"]:
+            for batch in self.datasets["test"]:
+                data, cubelet_id, targets = self._unpack_batch(batch)
                 data = data.to(device)
                 targets = targets.to(device)
+                if cubelet_id is not None:
+                    cubelet_id = cubelet_id.to(device)
 
                 # forward pass
-                output = self.net(data)
+                output = self.net((data, cubelet_id)) if cubelet_id is not None else self.net(data)
 
                 # calculate total accuracy
                 pred, acc = self.predict(output, targets, reduction='none')

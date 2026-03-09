@@ -7,7 +7,7 @@ import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 from dataset import CustomDataset
-from SNN_func import Spiking_Net, Predictor, Trainer, multi_MSELoss
+from SNN_func import Spiking_Net, Predictor, Trainer, multi_MSELoss, CubeletOrderedThresholdSpikeGenMulti
 import snntorch as snn
 from snntorch import surrogate
 import numpy as np
@@ -64,9 +64,12 @@ def main():
 
     # Load cached data
     data_file = torch.load(args.cache, map_location="cpu")
-    samples, targets = data_file["samples"], data_file["targets"]
+    samples = data_file["samples"]
+    cubelets = data_file["cubelets"]
+    targets = data_file["targets"]
+
     ds = CustomDataset(filelist=[], primary_only=True, target=data_file["target_name"])
-    ds.data = list(zip(samples, targets))
+    ds.data = list(zip(samples, cubelets, targets))
 
     # Split dataset (70% train, 15% val, 15% test)
     total = len(ds)
@@ -87,7 +90,12 @@ def main():
     # Build and load network
     n_tasks = targets.shape[1] if targets.ndim > 1 else 1
     net_desc = make_net_desc(n_tasks)
-    net = Spiking_Net(net_desc, lambda x: spikegen_multi(x, 4))
+    encoder = CubeletOrderedThresholdSpikeGenMulti(
+        n_cubelets=1000,
+        multiplicity=4,
+        alpha=5.0
+    )
+    net = Spiking_Net(net_desc, encoder)
     net.load_state_dict(torch.load(args.model, map_location="cpu"))
 
     # Predictor, loss, optimizer (optimizer unused here!)

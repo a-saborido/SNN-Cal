@@ -6,7 +6,7 @@ Training
 import argparse, torch, torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 from dataset  import CustomDataset
-from SNN_func import Spiking_Net, Predictor, Trainer, multi_MSELoss
+from SNN_func import Spiking_Net, Predictor, Trainer, multi_MSELoss, CubeletOrderedThresholdSpikeGenMulti
 import snntorch as snn
 from snntorch import surrogate
 
@@ -14,7 +14,7 @@ from typing import Callable
 import numpy as np
 import matplotlib.pyplot as plt
 
-
+'''
 def spikegen_multi(data, multiplicity=4):
     og_shape = data.shape
     spike_data = torch.zeros(og_shape[1], og_shape[0], multiplicity*og_shape[2])
@@ -24,7 +24,7 @@ def spikegen_multi(data, multiplicity=4):
         spike_data[time_idx, batch_idx, multiplicity*sensor_idx+i] = 1
 
     return spike_data
-
+'''
 
 def predict_spikefreq(output):
     prediction = output.sum(0).mean(1) # sum spikes across time and average over the population
@@ -72,10 +72,13 @@ def main() -> None:
 
     # load data
     data_file = torch.load(args.cache, map_location="cpu")
-    samples, targets = data_file["samples"], data_file["targets"]
+    samples = data_file["samples"]
+    cubelets = data_file["cubelets"]
+    targets = data_file["targets"]
+
     ds = CustomDataset(filelist=[], primary_only=True,
                        target=data_file["target_name"])
-    ds.data = list(zip(samples, targets))
+    ds.data = list(zip(samples, cubelets, targets))
 
     # Fix seed for consistency with print_predictions.py
     seed = 42
@@ -93,8 +96,13 @@ def main() -> None:
     # ------------------------- network / loss / predictor -------------------------
     n_tasks       = targets.shape[1] if targets.ndim>1 else 1
     net_desc      = make_net_desc(n_tasks)
-    net_Epos_spk  = Spiking_Net(net_desc, lambda x: spikegen_multi(x,4))
-
+    #net_Epos_spk  = Spiking_Net(net_desc, lambda x: spikegen_multi(x,4))
+    encoder = CubeletOrderedThresholdSpikeGenMulti(
+        n_cubelets=1000,
+        multiplicity=4,
+        alpha=5.0
+    )
+    net_Epos_spk = Spiking_Net(net_desc, encoder)
 
     # predictor
     Pred_Epos_spk = Predictor(predict_spikefreq,
@@ -128,6 +136,31 @@ def main() -> None:
     # save
     torch.save(net_Epos_spk.state_dict(), args.model_out)
     print(f"Trained model saved to {args.model_out}")
+
+    # after training, print the learned thresholds of the encoder
+    th_exp = net_Epos_spk.spikegen_fn.threshold_exponents().detach().cpu().numpy()
+    th = net_Epos_spk.spikegen_fn.thresholds().detach().cpu().numpy()
+
+    print("Threshold exponents (log10) =")
+    print(th_exp)
+    '''
+    c= np.array([])
+    for i in th_exp:
+        c = np.append(c, i)
+    print(np.sort(np.unique(c)))
+    '''
+    print("Threshold exponents shape:", th_exp.shape)
+    print("Threshold exponents min/mean/max:", th_exp.min(), th_exp.mean(), th_exp.max())
+
+    print("\nThresholds (linear scale) =")
+    print(th)
+    print("Thresholds shape:", th.shape)
+    print("Thresholds min/mean/max:", th.min(), th.mean(), th.max())
+
+    # save the learned threshold exponents of the encoder
+    out_file = "learned_threshold_exponents.txt"
+    np.savetxt(out_file, th_exp, fmt="%.8f", delimiter="\t")
+
 
 if __name__ == "__main__":
     main()

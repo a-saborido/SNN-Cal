@@ -23,6 +23,7 @@ timesteps = int(max_t/dt)
 def readfile(filename, primary_only):
 
   ph_list = []
+  cublet_list = []
   E_list  = []
   ct_list = []
   sE_list = []
@@ -54,6 +55,7 @@ def readfile(filename, primary_only):
 
       # Read cublet_id
       cublet_id = struct.unpack('i', file.read(4))[0]
+      cublet_list.append(cublet_id)
       
       # Read total energy released
       E_list.append(struct.unpack('d', file.read(8))[0])
@@ -82,12 +84,11 @@ def readfile(filename, primary_only):
 
       data = file.read(4)
 
-  res = [ph_list, E_list, ct_list, sE_list, N_list, p_class]
+  res = [ph_list, cublet_list, E_list, ct_list, sE_list, N_list, p_class]
   if not primary_only:
     res.append(primary_list)
 
   return res
-
 
 ###############################################################################
 
@@ -109,19 +110,22 @@ class CustomDataset(Dataset):
     def __init__(self, filelist, primary_only=True, target="energy", transform=None):
         
         targets_dict = {
-            "energy":1,
-            "centroid":2,
-            "dispersion":3,
-            "N_int":4,
-            "particle":5,
-            "primary":6
+            "cublet": 1,
+            "energy": 2,
+            "centroid": 3,
+            "dispersion": 4,
+            "N_int": 5,
+            "particle": 6,
+            "primary": 7
         }
         
         samples = []
+        cubelets = []
         targets = []
         for file in filelist:
             info = readfile(file, primary_only)
             samples += info[0]
+            cubelets += info[1]
 
             if isinstance(target, Iterable) and not isinstance(target, (str, bytes)):
                 temp = [info[targets_dict[key]] for key in target]
@@ -130,9 +134,9 @@ class CustomDataset(Dataset):
                 targets += info[targets_dict[target]]
 
         samples = to_tensor_and_dtype(np.array(samples))
-        #targets = F.one_hot(torch.tensor(targets)-1, nClasses)
+        cubelets = torch.tensor(cubelets, dtype=torch.long)
 
-        self.data = list(zip(samples, targets))
+        self.data = list(zip(samples, cubelets, targets))
         self.transform = transform
 
     def __len__(self):
@@ -191,8 +195,17 @@ def build_dataset(path, max_files=50, energy_threshold=None, *args, **kwargs):
     # Energy filter
     if energy_threshold is not None:
         def energy_cut(x):
-            _, target = x
-            return target[0] >= energy_threshold
+            if len(x) == 3:
+                _, _, target = x
+            else:
+                _, target = x
+
+            if isinstance(target, (tuple, list, np.ndarray, torch.Tensor)):
+                energy = target[0]
+            else:
+                energy = target
+
+            return energy >= energy_threshold
         dataset.clean(energy_cut)
 
     return dataset

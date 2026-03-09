@@ -43,9 +43,9 @@ if isinstance(tgt_arg, str) and tgt_arg in alias:             # Epos or Edsp
 # ------------------------- build dataset -------------------------
 ds = build_dataset(args.data_dir,
                    max_files=args.max_files,
-                   primary_only=False,                         # set to True if including only primary cubelets!
+                   primary_only=True,                         # set to True if including only primary cubelets!
                    target=tgt_arg,
-                   energy_threshold=10
+                   energy_threshold=10.
                    )                       # tune this as needed
 
 # ------------------------- flatten helper -------------------------
@@ -61,11 +61,19 @@ def _flatten(x):
     else:                                   # scalar
         return [float(x)]
 
-# ------------------------- stack samples and targets -------------------------
-samples, targets = zip(*ds.data)            # lists of tensors
-samples = torch.stack(samples)              # (N, T, 100) int32
-targets = torch.stack([torch.tensor(_flatten(t), dtype=torch.float32)
-                       for t in targets])   # (N, n_targets) float32
+# ------------------------- stack samples, cubelets and targets -------------------------
+samples, cubelets, targets = zip(*ds.data)
+samples = torch.stack(samples)   # (N, T, 100)
+
+cubelets = torch.stack([
+    c if torch.is_tensor(c) else torch.tensor(c, dtype=torch.long)
+    for c in cubelets
+]).long()                        # (N,)
+
+targets = torch.stack([
+    torch.tensor(_flatten(t), dtype=torch.float32)
+    for t in targets
+])                               # (N, n_targets)
 
 if "energy" in tgt_arg or (isinstance(tgt_arg, list) and "energy" in tgt_arg):
     # energy is the *first* column after flattening
@@ -74,6 +82,7 @@ if "energy" in tgt_arg or (isinstance(tgt_arg, list) and "energy" in tgt_arg):
 
 # ------------------------- save -------------------------
 torch.save({"samples": samples,
+            "cubelets": cubelets,
             "targets": targets,
             "target_name": tgt_arg},
            args.out)
