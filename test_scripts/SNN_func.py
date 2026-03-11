@@ -23,7 +23,7 @@ device = torch.device("cpu")
 class SurrogateHeaviside(torch.autograd.Function):
     """
     Forward: hard threshold (0/1)
-    Backward: surrogate gradient so the gains can learn.
+    Backward: surrogate gradient
     """
     @staticmethod
     def forward(ctx, x, alpha: float):
