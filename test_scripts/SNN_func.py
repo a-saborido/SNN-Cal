@@ -42,69 +42,6 @@ class SurrogateHeaviside(torch.autograd.Function):
 def _inv_softplus(y: float) -> float:
     return float(np.log(np.exp(y) - 1.0))
 
-'''
-class CubeletSharedGainSpikeGenMulti(nn.Module):
-    """
-    Trainable gains per (cubelet, threshold-channel), shared across the 100 sensors.
-
-    Parameters:
-      gain_raw shape = (n_cubelets, multiplicity)
-      => total trainable parameters = 1000 * 4
-
-    Input:
-      data       : (B, T, S)
-      cubelet_id : (B,)
-
-    Output:
-      spikes     : (T, B, S*multiplicity)
-      with feature ordering: multiplicity*sensor + i
-    """
-    def __init__(self, n_cubelets: int = 1000, multiplicity: int = 4,
-                 alpha: float = 5.0, init_gain: float = 1.0, eps: float = 1e-6):
-        super().__init__()
-        self.n_cubelets = n_cubelets
-        self.multiplicity = multiplicity
-        self.alpha = float(alpha)
-        self.eps = float(eps)
-
-        init_raw = _inv_softplus(init_gain)
-        self.gain_raw = nn.Parameter(torch.full((n_cubelets, multiplicity), init_raw))
-
-        thr = torch.tensor([10.0 ** (i + 2) for i in range(multiplicity)], dtype=torch.float32)
-        self.register_buffer("thresholds", thr)
-
-    def gains(self):
-        return F.softplus(self.gain_raw) + self.eps   # (C, M)
-
-    def forward(self, data: torch.Tensor, cubelet_id: torch.Tensor) -> torch.Tensor:
-        # data: (B, T, S)
-        if data.ndim != 3:
-            raise ValueError(f"Expected data shape (B,T,S), got {tuple(data.shape)}")
-
-        B, T, S = data.shape
-        M = self.multiplicity
-
-        if cubelet_id.ndim != 1 or cubelet_id.shape[0] != B:
-            raise ValueError(f"cubelet_id must have shape (B,), got {tuple(cubelet_id.shape)}")
-
-        cubelet_id = cubelet_id.long().clamp(0, self.n_cubelets - 1)
-
-        # Select one 4-gain vector per event: (B, M)
-        g = self.gains().to(data.dtype).index_select(0, cubelet_id)   # (B, M)
-
-        # Broadcast over time and sensors:
-        # data -> (B, T, S, 1)
-        # g    -> (B, 1, 1, M)
-        x = data.unsqueeze(-1) * g.unsqueeze(1).unsqueeze(1)          # (B, T, S, M)
-
-        thr = self.thresholds.to(data.dtype).view(1, 1, 1, M)
-        spk = SurrogateHeaviside.apply(x - thr, self.alpha)           # (B, T, S, M)
-
-        # Flatten so feature index = multiplicity*sensor + i
-        spk = spk.reshape(B, T, S * M)                                # (B, T, S*M)
-        return spk.permute(1, 0, 2).contiguous()                      # (T, B, S*M)
-'''
-
 
 class CubeletOrderedThresholdSpikeGenMulti(nn.Module):
     """
@@ -189,7 +126,6 @@ class CubeletOrderedThresholdSpikeGenMulti(nn.Module):
         # Flatten so feature index = multiplicity*sensor + i
         spk = spk.reshape(B, T, S * M)                                       # (B, T, S*M)
         return spk.permute(1, 0, 2).contiguous()                             # (T, B, S*M)
-#########################################################
 
 
 ###############################################################################

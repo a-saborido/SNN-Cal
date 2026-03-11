@@ -15,13 +15,19 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 '''
-def spikegen_multi(data, multiplicity=4):
-    og_shape = data.shape
-    spike_data = torch.zeros(og_shape[1], og_shape[0], multiplicity*og_shape[2])
+def spikegen_multi(data, cubelet_id=None, multiplicity=4):
+    B, T, S = data.shape
+    spike_data = torch.zeros(
+        T, B, multiplicity * S,
+        device=data.device,
+        dtype=data.dtype
+    )
+
     for i in range(multiplicity):
-        condition = data > np.power(10, i+2)
+        threshold = 10.0 ** (i + 2)
+        condition = data > threshold
         batch_idx, time_idx, sensor_idx = torch.nonzero(condition, as_tuple=True)
-        spike_data[time_idx, batch_idx, multiplicity*sensor_idx+i] = 1
+        spike_data[time_idx, batch_idx, multiplicity * sensor_idx + i] = 1.0
 
     return spike_data
 '''
@@ -96,7 +102,7 @@ def main() -> None:
     # ------------------------- network / loss / predictor -------------------------
     n_tasks       = targets.shape[1] if targets.ndim>1 else 1
     net_desc      = make_net_desc(n_tasks)
-    #net_Epos_spk  = Spiking_Net(net_desc, lambda x: spikegen_multi(x,4))
+    #net_Epos_spk  = Spiking_Net(net_desc,spikegen_multi)
     encoder = CubeletOrderedThresholdSpikeGenMulti(
         n_cubelets=1000,
         multiplicity=4,
