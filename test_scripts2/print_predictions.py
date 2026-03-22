@@ -14,16 +14,23 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # ------------------------- Helper functions -------------------------
+'''
+def spikegen_multi(data, cubelet_id=None, multiplicity=4):
+    B, T, S = data.shape
+    spike_data = torch.zeros(
+        T, B, multiplicity * S,
+        device=data.device,
+        dtype=data.dtype
+    )
 
-def spikegen_multi(data, multiplicity=4):
-    og_shape = data.shape
-    spike_data = torch.zeros(og_shape[1], og_shape[0], multiplicity * og_shape[2])
     for i in range(multiplicity):
-        condition = data > np.power(10, i+2)
+        threshold = 10.0 ** (i + 2)
+        condition = data > threshold
         batch_idx, time_idx, sensor_idx = torch.nonzero(condition, as_tuple=True)
-        spike_data[time_idx, batch_idx, multiplicity * sensor_idx + i] = 1
-    return spike_data
+        spike_data[time_idx, batch_idx, multiplicity * sensor_idx + i] = 1.0
 
+    return spike_data
+'''
 
 def predict_spikefreq(output):
     # sum spikes across time and average over the population
@@ -65,7 +72,7 @@ def main():
     # Load cached data
     data_file = torch.load(args.cache, map_location="cpu")
     samples = data_file["samples"]
-    cubelets = data_file["cubelet_ids"]
+    cubelets = data_file["cubelets"]
     targets = data_file["targets"]
 
     ds = CustomDataset(filelist=[], primary_only=True, target=data_file["target_name"])
@@ -96,6 +103,7 @@ def main():
         alpha=5.0
     )
     net = Spiking_Net(net_desc, encoder)
+    #net = Spiking_Net(net_desc, spikegen_multi)
     net.load_state_dict(torch.load(args.model, map_location="cpu"))
 
     # Predictor, loss, optimizer (optimizer unused here!)

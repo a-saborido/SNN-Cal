@@ -19,3 +19,23 @@ Assuming we already trained a model called `snn_PrimaryTrained_Epos`with primary
 
 `python print_predictions.py --cache All_small_Epos.pt --model snn_PrimaryTrained_Epos.pth`
 
+# --------------------------------------------------------------------------------
+
+###  Dataset 1 (centre)
+`python generate_dataset.py --data-dir ../Data/All --out Dataset_1.pt --target Epos --x-center 4.5 --y-center 4.5 --r-min 0.0 --r-max 1.5 --z-min 0 --z-max 5`
+
+###  Dataset 2 (corona)
+
+`python generate_dataset.py --data-dir ../Data/All --out Dataset_2.pt --target Epos --x-center 4.5 --y-center 4.5 --r-min 1.5 --r-max 3.5 --z-min 0 --z-max 5`
+
+###  Dataset 3 (halo)
+
+`python generate_dataset.py --data-dir ../Data/All --out Dataset_3.pt --target Epos --x-center 4.5 --y-center 4.5 --r-min 0.0 --r-max 3.5 --z-min 0 --z-max 5 --invert`
+
+# Training
+
+`python train_model.py --cache Dataset_1.pt --epochs 15 --lr 1e-2 --model-out Model_1.pth`
+
+# Predictions
+
+`python print_predictions.py --cache Dataset_1.pt --model Model_1.pth`
