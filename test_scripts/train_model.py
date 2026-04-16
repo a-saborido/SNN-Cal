@@ -116,7 +116,7 @@ def main() -> None:
                               population_sizes=POP_SIZE)
 
     # loss
-    loss_Epos     = multi_MSELoss(weights=torch.tensor([1]*n_tasks))
+    loss_Epos = multi_MSELoss(weights=torch.tensor([1]*n_tasks))
 
     # optimiser + scheduler
     opt_Epos_spk  = optim.Adam(net_Epos_spk.parameters(),

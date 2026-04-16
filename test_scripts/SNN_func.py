@@ -547,10 +547,10 @@ class Trainer():
                 if logscale:
                     hist = axs[i].hist2d(targets[:, select[i]], predictions[:, select[i]],
                                          nbins, norm=SymLogNorm(*args, **kwargs), cmap='viridis',
-                                         range=[r, r])
+                                         range=[r, r], cmin=1)
                 else:
-                    hist = axs[i].hist2d(targets[:, select[i]], predictions[:, select[i]], nbins,
-                                         range=[r, r])
+                    hist = axs[i].hist2d(targets[:, select[i]], predictions[:, select[i]], nbins, cmap='viridis',
+                                         range=[r, r], cmin=1)
                                    
                 axs[i].plot([0, 1e5], [0, 1e5], color='white', linewidth=1, linestyle='--')
 
