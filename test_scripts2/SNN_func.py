@@ -82,7 +82,8 @@ class CubeletOrderedThresholdSpikeGenMulti(nn.Module):
         raw[:, 0] = _inv_softplus(init_first_exp)
         raw[:, 1:] = _inv_softplus(init_step_exp)
 
-        self.thr_exp_raw = nn.Parameter(raw)
+        self.thr_exp_raw = nn.Parameter(raw) #para el aprendizaje
+		
 
     def threshold_exponents(self):
         # positive increments in log10-space
@@ -435,7 +436,7 @@ class Trainer():
                 print(f"Validation {task_metric} = {self.acc_hist['validation'][self.current_epoch]}")
                 print("\n-------------------------------\n")
 
-    
+   
     def plot_loss(self, validation=True, logscale=True):
 
         loss = [l for l_per_epoch in self.loss_hist["train"].values() for l in l_per_epoch]
@@ -450,7 +451,7 @@ class Trainer():
             plt.plot(x, list(self.loss_hist["validation"].values()), color='orange', marker='o', linestyle='dashed', label="Validation")
         
         plt.legend(loc='upper right')
-        plt.show()
+        # plt.show()
 
     
     def ConfusionMatrix(self, *args, **kwargs):
@@ -596,3 +597,104 @@ class Trainer():
 
     def get_par_hist(self):
         return self.par_hist
+
+# --- NUEVOS MÉTODOS DE DIAGNÓSTICO POBLACIONAL ---
+    def analyze_population_variance(self):
+        self.net.eval()
+        all_means = []
+        all_vars = []
+        all_targets = []
+        
+        with torch.no_grad():
+            for batch in self.datasets["test"]:
+                data, cubelet_id, targets = self._unpack_batch(batch)
+                data = data.to(device)
+                targets = targets.to(device)
+                if cubelet_id is not None:
+                    cubelet_id = cubelet_id.to(device)
+
+                output = self.net((data, cubelet_id)) if cubelet_id is not None else self.net(data)
+                
+                if isinstance(self.predict.population_sizes, int):
+                    out_reshaped = output.reshape(output.shape[0], output.shape[1], self.predict.population_sizes, -1)
+                    spikes_per_neuron = out_reshaped.sum(dim=0).to(torch.float32)
+                    
+                    batch_mean = spikes_per_neuron.mean(dim=1)
+                    batch_var = spikes_per_neuron.var(dim=1)
+                    
+                    all_means.append(batch_mean)
+                    all_vars.append(batch_var)
+                    all_targets.append(targets)
+                else:
+                    raise NotImplementedError("Análisis no implementado para poblaciones con tamaños dispares.")
+                    
+        all_means = torch.cat(all_means, dim=0)
+        all_vars = torch.cat(all_vars, dim=0)
+        all_targets = torch.cat(all_targets, dim=0)
+        
+        return all_targets, all_means, all_vars
+
+
+    def plot_population_variance(self, task_idx=0, 
+                                    title="Varianza Intra-Poblacional", xlabel="Valor Real", ylabel="Varianza (Spikes²)", 
+                                    filename="diagnostico_varianza.png"):
+			
+        targets, means, variances = self.analyze_population_variance()
+        
+        if len(targets.shape) > 1:
+            t_np = targets[:, task_idx].cpu().numpy()
+            v_np = variances[:, task_idx].cpu().numpy()
+        else:
+            t_np = targets.cpu().numpy()
+            v_np = variances.cpu().numpy()
+        
+        fig, ax = plt.subplots(figsize=(7, 5), facecolor="w")
+        
+        ax.scatter(t_np, v_np, alpha=0.5, s=15, color='royalblue')
+        
+        ax.set_xlabel(xlabel, fontsize=12)
+        ax.set_ylabel(ylabel, fontsize=12)
+        ax.set_title(title, fontsize=14)
+        ax.grid(True, linestyle='--', alpha=0.6)
+        
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        plt.close()
+
+    def plot_neuron_activity_distribution(self, task_idx=0, 
+                                          title="Distribución de Spikes por Neurona", 
+                                          filename="actividad_neuronas.png"):
+        self.net.eval()
+        all_spikes = []
+        
+        with torch.no_grad():
+            for batch in self.datasets["test"]:
+                data, cubelet_id, targets = self._unpack_batch(batch)
+                data = data.to(device)
+                if cubelet_id is not None:
+                    cubelet_id = cubelet_id.to(device)
+
+                output = self.net((data, cubelet_id)) if cubelet_id is not None else self.net(data)
+                
+                if isinstance(self.predict.population_sizes, int):
+                    out_reshaped = output.reshape(output.shape[0], output.shape[1], self.predict.population_sizes, -1)
+                    spikes = out_reshaped.sum(dim=0).to(torch.float32)
+                    spikes_task = spikes[:, :, task_idx]
+                    all_spikes.append(spikes_task.cpu().numpy())
+                else:
+                    raise NotImplementedError("Análisis no implementado para poblaciones con tamaños dispares.")
+        
+        all_spikes = np.concatenate(all_spikes, axis=0)
+        
+        fig, ax = plt.subplots(figsize=(10, 6), facecolor="w")
+        box = ax.boxplot(all_spikes, patch_artist=True, notch=False, 
+                         boxprops=dict(facecolor='lightblue', color='blue', alpha=0.7),
+                         medianprops=dict(color='red', linewidth=2),
+                         flierprops=dict(marker='o', color='black', alpha=0.1, markersize=3))
+        
+        ax.set_xlabel("ID de Neurona en el Ensamble (1 a 20)", fontsize=12)
+        ax.set_ylabel("Total de Spikes emitidos por evento", fontsize=12)
+        ax.set_title(title, fontsize=14)
+        ax.grid(True, axis='y', linestyle='--', alpha=0.6)
+        
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        plt.close()

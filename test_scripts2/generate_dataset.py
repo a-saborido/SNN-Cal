@@ -34,6 +34,9 @@ p.add_argument("--r-max", type=float, default=15.0, help="Radio externo máximo"
 p.add_argument("--z-min", type=int, default=0, help="Capa Z inicial (0-9)")
 p.add_argument("--z-max", type=int, default=9, help="Capa Z final (0-9)")
 p.add_argument("--invert", action="store_true", help="Si se activa, coge lo que está FUERA de la región")
+
+p.add_argument("--primary-only", action="store_true", help="Si se activa, lee solo los cubelets primarios")
+
 # ----------------------------------------------------
 
 p.add_argument("--e-max", type=float, default=None, help="Energía máxima permitida (MeV)")
@@ -57,9 +60,9 @@ if isinstance(tgt_arg, str) and tgt_arg in alias:             # Epos or Edsp
 # ------------------------- build dataset -------------------------
 ds = build_dataset(args.data_dir,
                    max_files=args.max_files,
-                   primary_only=False,                         # set to True if including only primary cubelets!
+                   primary_only=args.primary_only,                         # set to True if including only primary cubelets!
                    target=tgt_arg,
-                   energy_threshold=10.0
+                   energy_threshold=0
                    )                       # tune this as needed
 
 # ------------------------- flatten helper -------------------------
@@ -112,7 +115,7 @@ if args.e_max is not None:
 if "energy" in tgt_arg or (isinstance(tgt_arg, list) and "energy" in tgt_arg):
     if not args.linear_E:
         # Solo aplicamos log10 si NO nos piden lineal
-        targets[:, 0] = torch.log10(targets[:, 0])          # log10(E/MeV)
+        targets[:, 0] = torch.log10(targets[:, 0])          # loge(E/MeV)
 
 
 

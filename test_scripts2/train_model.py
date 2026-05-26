@@ -52,8 +52,8 @@ POP_SIZE = 20     # neurons per regression target
 
 
 # ------------------------- helper to build net description -------------------------
-COMMON_NEURON = {"beta":0.5, "learn_beta":True,
-                 "threshold":1.0, "learn_threshold":True,
+COMMON_NEURON = {"beta":0.5, "learn_beta":False,           #<- vamos a no aprender nada
+                 "threshold":1.0, "learn_threshold":False, #<- vamos a no aprender nada
                  "spike_grad": surrogate.atan()}
 
 def make_net_desc(n_tasks: int, pop: int = POP_SIZE) -> dict:
@@ -116,7 +116,7 @@ def main() -> None:
                               population_sizes=POP_SIZE)
 
     # loss
-    loss_Epos = multi_MSELoss(weights=torch.tensor([1]*n_tasks))
+    loss_Epos = multi_MSELoss(weights=torch.tensor([1.0]*n_tasks)) 
 
     # optimiser + scheduler
     opt_Epos_spk  = optim.Adam(net_Epos_spk.parameters(),
