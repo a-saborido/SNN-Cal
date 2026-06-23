@@ -1,7 +1,0 @@
-# Ignorar modelos y datasets pesados
-*.pt
-*.pth
-
-# Ignorar archivos temporales de Python y Jupyter
-__pycache__/
-.ipynb_checkpoints/

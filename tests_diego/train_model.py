@@ -15,17 +15,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-# def spikegen_multi(data, multiplicity=4):
-#     og_shape = data.shape
-#     spike_data = torch.zeros(og_shape[1], og_shape[0], multiplicity*og_shape[2],device=data.device)
-#     for i in range(multiplicity):
-#         condition = data > np.power(10, i+2)
-#         batch_idx, time_idx, sensor_idx = torch.nonzero(condition, as_tuple=True)
-#         spike_data[time_idx, batch_idx, multiplicity*sensor_idx+i] = 1
-
-#     return spike_data
-
-
 def predict_spikefreq(output):
     prediction = output.sum(0).mean(1) # sum spikes across time and average over the population
     return prediction
@@ -46,8 +35,8 @@ POP_SIZE = 20     # neurons per regression target
 
 
 # ------------------------- helper to build net description -------------------------
-COMMON_NEURON = {"beta":0.5, "learn_beta":True,
-                 "threshold":1.0, "learn_threshold":True,
+COMMON_NEURON = {"beta": 0.5, "learn_beta": True,            # beta is learned
+                 "threshold": 1.0, "learn_threshold": True,  # threshold is learned
                  "spike_grad": surrogate.atan()}
 
 def make_net_desc(n_tasks: int, pop: int = POP_SIZE) -> dict:
@@ -60,8 +49,6 @@ def make_net_desc(n_tasks: int, pop: int = POP_SIZE) -> dict:
                          COMMON_NEURON, COMMON_NEURON, COMMON_NEURON],
     )
 
-
-    
 # ------------------------- main training routine -------------------------
 def main() -> None:
     p = argparse.ArgumentParser()
@@ -74,12 +61,10 @@ def main() -> None:
 
     # load data
     data_file = torch.load(args.cache, map_location="cpu")
-
     samples = data_file["samples"]
-    cubelets = data_file["cubelet_ids"]
+    cubelets = data_file["cubelets"]
     targets = data_file["targets"]
 
-	
     ds = CustomDataset(filelist=[], primary_only=True,
                        target=data_file["target_name"])
     ds.data = list(zip(samples, cubelets, targets))
@@ -100,26 +85,20 @@ def main() -> None:
     # ------------------------- network / loss / predictor -------------------------
     n_tasks       = targets.shape[1] if targets.ndim>1 else 1
     net_desc      = make_net_desc(n_tasks)
-
-	
-
-
     encoder = CubeletOrderedThresholdSpikeGenMulti(
         n_cubelets=1000,
         multiplicity=4,
         alpha=5.0
     )
+    net_Epos_spk = Spiking_Net(net_desc, encoder)
 
-	
-    net_Epos_spk = Spiking_Net(net_desc, encoder)	
-	
     # predictor
     Pred_Epos_spk = Predictor(predict_spikefreq,
                               distance,
                               population_sizes=POP_SIZE)
 
     # loss
-    loss_Epos     = multi_MSELoss(weights=torch.tensor([1]*n_tasks))
+    loss_Epos = multi_MSELoss(weights=torch.tensor([1.0]*n_tasks)) 
 
     # optimiser + scheduler
     opt_Epos_spk  = optim.Adam(net_Epos_spk.parameters(),
@@ -138,7 +117,6 @@ def main() -> None:
 
     train_Epos_spk.train(args.epochs)
 
-
     # plot loss function
     train_Epos_spk.plot_loss(validation=True, logscale=True)
     plt.savefig("loss.png", dpi=300, bbox_inches="tight")
@@ -153,12 +131,6 @@ def main() -> None:
 
     print("Threshold exponents (log10) =")
     print(th_exp)
-    '''
-    c= np.array([])
-    for i in th_exp:
-        c = np.append(c, i)
-    print(np.sort(np.unique(c)))
-    '''
     print("Threshold exponents shape:", th_exp.shape)
     print("Threshold exponents min/mean/max:", th_exp.min(), th_exp.mean(), th_exp.max())
 

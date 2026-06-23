@@ -26,22 +26,21 @@ p.add_argument("--target",   default="energy",
                help="Target(s) to regress - see docstring")
 p.add_argument("--max-files", type=int, default=100)
 
-# --- NUEVOS ARGUMENTOS DE SEGMENTACIÓN ---
-p.add_argument("--x-center", type=float, default=4.5, help="Centro X de la región (0-9)")
-p.add_argument("--y-center", type=float, default=4.5, help="Centro Y de la región (0-9)")
-p.add_argument("--r-min", type=float, default=0.0, help="Radio interno mínimo")
-p.add_argument("--r-max", type=float, default=15.0, help="Radio externo máximo")
-p.add_argument("--z-min", type=int, default=0, help="Capa Z inicial (0-9)")
-p.add_argument("--z-max", type=int, default=9, help="Capa Z final (0-9)")
-p.add_argument("--invert", action="store_true", help="Si se activa, coge lo que está FUERA de la región")
+# --- SEGMENTATION ARGUMENTS ---
+p.add_argument("--x-center", type=float, default=4.5, help="X center of the region (0-9)")
+p.add_argument("--y-center", type=float, default=4.5, help="Y center of the region (0-9)")
+p.add_argument("--r-min", type=float, default=0.0, help="Inner (minimum) radius")
+p.add_argument("--r-max", type=float, default=15.0, help="Outer (maximum) radius")
+p.add_argument("--z-min", type=int, default=0, help="Starting Z layer (0-9)")
+p.add_argument("--z-max", type=int, default=9, help="Ending Z layer (0-9)")
+p.add_argument("--invert", action="store_true", help="If set, keep what is OUTSIDE the region")
 
-p.add_argument("--primary-only", action="store_true", help="Si se activa, lee solo los cubelets primarios")
+p.add_argument("--primary-only", action="store_true", help="If set, read only the primary cubelets")
 
 # ----------------------------------------------------
 
-p.add_argument("--e-max", type=float, default=None, help="Energía máxima permitida (MeV)")
-p.add_argument("--linear-E", action="store_true", help="No aplicar log10 a la energía")
-#----------------------------------------------------
+p.add_argument("--e-max", type=float, default=None, help="Maximum allowed energy (MeV)")
+# ----------------------------------------------------
 args = p.parse_args()
 
 # ------------------------- target alias / parsing -------------------------
@@ -60,9 +59,9 @@ if isinstance(tgt_arg, str) and tgt_arg in alias:             # Epos or Edsp
 # ------------------------- build dataset -------------------------
 ds = build_dataset(args.data_dir,
                    max_files=args.max_files,
-                   primary_only=args.primary_only,                         # set to True if including only primary cubelets!
+                   primary_only=args.primary_only,                         
                    target=tgt_arg,
-                   energy_threshold=0
+                   energy_threshold=10
                    )                       # tune this as needed
 
 # ------------------------- flatten helper -------------------------
@@ -93,45 +92,43 @@ targets = torch.stack([
 ])                               # (N, n_targets)
 
 
-# ------------------------- Filtro de Energía Máxima -------------------------
+# ------------------------- Maximum energy filter -------------------------
+# Applied while targets[:, 0] is still in linear MeV (before log10).
 if args.e_max is not None:
-    # Asumimos que targets[:, 0] todavía está en MeV (escala lineal)
     mask_e = targets[:, 0] <= args.e_max
-    
-    # Combinamos con la máscara espacial que ya tenías
-    # (Si la variable mask ya existía por la segmentación espacial)
+
+    # Combine with the spatial mask if it already exists
     if 'mask' in locals():
         mask = mask & mask_e
     else:
         mask = mask_e
-        
-    # Aplicamos
+
     samples = samples[mask]
     cubelets = cubelets[mask]
     targets = targets[mask]
-    print(f"Filtro E <= {args.e_max} MeV aplicado. Eventos: {len(samples):,}")
+    print(f"Filter E <= {args.e_max} MeV applied. Events: {len(samples):,}")
 
-# ------------------------- Conversión log10 (Opcional) -------------------------
+# ------------------------- log10 conversion (always applied to energy) -------------------------
+# We always train/evaluate on log10(E/MeV). The linear-energy view is recovered
+# downstream (in print_predictions.py) by undoing the log10.
 if "energy" in tgt_arg or (isinstance(tgt_arg, list) and "energy" in tgt_arg):
-    if not args.linear_E:
-        # Solo aplicamos log10 si NO nos piden lineal
-        targets[:, 0] = torch.log10(targets[:, 0])          # loge(E/MeV)
+    targets[:, 0] = torch.log10(targets[:, 0])          # log10(E/MeV)
 
 
 
-# ------------------------- Filtrado Espacial (Segmentación) -------------------------
-# Como tenemos 1000 cubelets en una cuadrícula de 10x10x10, extraemos (Z, Y, X) del ID
+# ------------------------- Spatial filtering (segmentation) -------------------------
+# With 1000 cubelets on a 10x10x10 grid, extract (Z, Y, X) from the cubelet ID
 z_coord = cubelets // 100
 y_coord = (cubelets % 100) // 10
 x_coord = cubelets % 10
 
-# Calculamos la distancia (radio) de cada evento respecto al centro XY definido
+# Distance (radius) of each event with respect to the defined XY center
 radios = torch.sqrt((x_coord - args.x_center)**2 + (y_coord - args.y_center)**2)
 
-# Creamos la máscara booleana con las condiciones de radio y profundidad (Z)
+# Boolean mask combining radius and depth (Z) conditions
 mask = (radios >= args.r_min) & (radios <= args.r_max) & (z_coord >= args.z_min) & (z_coord <= args.z_max)
 
-# Invertimos la máscara si nos lo piden (para hacer el resto del detector)
+# Invert the mask if requested (to take the rest of the detector)
 if args.invert:
     mask = ~mask
 

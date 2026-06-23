@@ -1,7 +1,17 @@
-SNN/__pycache__/*
-*.pt
-*.pth
-__pycache__/
+# Ignore everything by default
+*
+
+# But always look inside directories (so nested files can be matched)
+!*/
+
+# Allow only source, docs and notebooks
+!*.py
+!*.md
+!*.ipynb
+
+# Keep the .gitignore itself tracked
+!.gitignore
+
+# Exclude Jupyter checkpoint folders (must come AFTER the include rules)
 .ipynb_checkpoints/
-*.png
-*.pdf
+**/.ipynb_checkpoints/
