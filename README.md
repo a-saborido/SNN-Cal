@@ -28,8 +28,14 @@ conda init --all
 ```
 
 #### Create the Conda Env
-Generate a conda environment ([here](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html) is a list of commands you can use) and download the necessary packages, in particular *numpy*, *PyTorch*, *snnTorch* and *Jupyter Notebook*. <br> If you want the exact environment that I used, run the following command:
+Generate a conda environment ([here](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html) is a list of commands you can use) and download the necessary packages, in particular *numpy*, *PyTorch*, *snnTorch* and *Jupyter Notebook*. <br> If you want the exact environment that (Enrico) used (based on `python==3.9.20`), run the following command:
 ```bash
 conda env create -f env/environmental_droplet.yml
 ```
 to create the *snn_hgcal* environment with all the needed components.
+<br>
+If you instead want an environment based on the more modern `python==3.10`, run the following command:
+```bash
+conda env create -f env/env_310.yml  # to run on artemisa, use env/env_310_artemisa.yml instead, to solve compatibility issues between Tesla P100 and torch
+````
+to create a *snn_hgcal* environment with all the needed components on python `3.10`.

@@ -1,0 +1,26 @@
+name: snn_hgcal
+channels:
+  - defaults
+  - conda-forge
+  - https://repo.anaconda.com/pkgs/main
+  - https://repo.anaconda.com/pkgs/r
+dependencies:
+  - python=3.10
+  - imageio
+  - ipython
+  - ipykernel
+  - ipywidgets
+  - matplotlib=3.10.3
+  - numpy
+  - pip
+  - pandas
+  - libstdcxx-ng>=13
+  - pip:
+      - scikit-learn
+      - snntorch
+      - torch --index-url https://download.pytorch.org/whl/cu126torch
+      - torchmetrics
+      - torchvision --index-url https://download.pytorch.org/whl/cu126torch
+      - tqdm
+      - visualize
+      - dataset

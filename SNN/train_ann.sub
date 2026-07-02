@@ -1,0 +1,41 @@
+# train_ann.sub
+#
+# Submits 9 independent ANN training jobs to HTCondor.
+# Each job trains one regression task:
+#
+#   Process  task_name
+#   -------  ------------------
+#    0        energy
+#    1        centroid_x
+#    2        centroid_y
+#    3        centroid_z
+#    4        dispersion_x
+#    5        dispersion_y
+#    6        dispersion_z
+#    7        energy_centroid
+#    8        energy_dispersion
+#
+# Submit with:  condor_submit train_ann.sub
+
+universe   = vanilla
+
+executable = /lhome/ext/uovi123/uovi123j/SNN-Cal/SNN/train_ann.sh
+arguments  = $(Process)
+
+log    = /lhome/ext/uovi123/uovi123j/SNN-Cal/SNN/condor_logs/train_ann.log
+output = /lhome/ext/uovi123/uovi123j/SNN-Cal/SNN/condor_logs/train_ann.$(Process).out
+error  = /lhome/ext/uovi123/uovi123j/SNN-Cal/SNN/condor_logs/train_ann.$(Process).err
+
+notify_user  = enrico.lupi@cern.ch
+notification = Always
+
+# ── Resource requests ──────────────────────────────────────────────────────────
+request_cpus   = 4
+request_memory = 16G
+request_disk   = 5G
+
+# Uncomment the lines below if GPU nodes are available and desired:
+request_gpus = 1
+requirements = (GPUs_Capability >= 7.0)
+
+queue 8

@@ -5,8 +5,7 @@ import os
 import torch
 from torch.utils.data import Dataset, DataLoader, random_split
 from collections.abc import Iterable
-
-
+import torch.nn.functional as F
 ###############################################################################
 
 
@@ -20,7 +19,7 @@ timesteps = int(max_t/dt)
 ###############################################################################
 
 
-def readfile(filename, primary_only):
+def readfile(filename, primary_only, merged = True):
 
   ph_list = []
   E_list  = []
@@ -28,14 +27,26 @@ def readfile(filename, primary_only):
   sE_list = []
   N_list  = []
   p_class = []
+  cublet_id = []
+  event_id = []
+
   if not primary_only:
     primary_list = []
 
-  with open(filename, 'rb') as file:
+  delimiter = b'EOE '
 
+  with open(filename, 'rb') as file:
+    event = 1
     data = file.read(4)
     while data:
-    
+      if data == delimiter:
+        event = struct.unpack('i', file.read(4))[0]
+        data = file.read(4)
+
+        if not data:
+            break
+        continue
+
       ph_matrix = np.zeros(shape=(timesteps, nSensors), dtype=np.int32)
 
       # read photon count data
@@ -53,8 +64,8 @@ def readfile(filename, primary_only):
       ph_list.append(ph_matrix)
 
       # Read cublet_id
-      cublet_id = struct.unpack('i', file.read(4))[0]
-      
+      cublet_id.append(struct.unpack('i', file.read(4))[0])
+
       # Read total energy released
       E_list.append(struct.unpack('d', file.read(8))[0])
       
@@ -79,10 +90,17 @@ def readfile(filename, primary_only):
       # Read primary vertex indicator
       if not primary_only:
         primary_list.append(struct.unpack('i', file.read(4))[0])
-
+      
+      if merged: 
+        event_id.append(event)
+      
       data = file.read(4)
 
-  res = [ph_list, E_list, ct_list, sE_list, N_list, p_class]
+  res = [ph_list, E_list, ct_list, sE_list, N_list, p_class, cublet_id]
+
+  if merged:
+    res.append(event_id)
+    
   if not primary_only:
     res.append(primary_list)
 
@@ -90,6 +108,7 @@ def readfile(filename, primary_only):
 
 
 ###############################################################################
+
 
 
 # converts to Torch tensor of desired type
@@ -106,7 +125,7 @@ def to_tensor_and_dtype(input, target_dtype=torch.float32):
     return input
 
 class CustomDataset(Dataset):
-    def __init__(self, filelist, primary_only=True, target="energy", transform=None):
+    def __init__(self, filelist, primary_only=True, target="energy",transform=None):
         
         targets_dict = {
             "energy":1,
@@ -130,7 +149,8 @@ class CustomDataset(Dataset):
                 targets += info[targets_dict[target]]
 
         samples = to_tensor_and_dtype(np.array(samples))
-        #targets = F.one_hot(torch.tensor(targets)-1, nClasses)
+        if isinstance(targets, str):
+            targets = to_tensor_and_dtype(targets, target_dtype = torch.long)
 
         self.data = list(zip(samples, targets))
         self.transform = transform

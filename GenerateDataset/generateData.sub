@@ -1,0 +1,21 @@
+# hello_world
+ 
+universe = vanilla
+
+executable          = generateData.sh
+arguments           = -s $(start) -e $(end) -i /lustre/ific.uv.es/ml/uovi123/snncalo/optCalData -o /lustre/ific.uv.es/ml/uovi123/snncalo/PhotonData/Reflections
+
+log                 = condor_logs/generateData.log
+output              = condor_logs/outfile.$(start).$(end).out
+error               = condor_logs/errors.$(start).$(end).err
+
+notify_user = enrico.lupi@cern.ch
+notification = always
+
+environment = "LD_LIBRARY_PATH=/lib"
+
+request_cpus        = 8
+request_memory      = 16G
+request_disk        = 1G
+
+queue start, end from list.txt

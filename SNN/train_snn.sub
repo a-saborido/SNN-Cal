@@ -1,0 +1,50 @@
+# train_snn.sub
+#
+# Submits 18 independent SNN training jobs to HTCondor.
+# Each job trains one combination of (task × output_mode):
+#
+#   Process  task_name           output_mode
+#   -------  ------------------  -----------
+#    0        energy              spike
+#    1        energy              membrane
+#    2        centroid_x          spike
+#    3        centroid_x          membrane
+#    4        centroid_y          spike
+#    5        centroid_y          membrane
+#    6        centroid_z          spike
+#    7        centroid_z          membrane
+#    8        dispersion_x        spike
+#    9        dispersion_x        membrane
+#   10        dispersion_y        spike
+#   11        dispersion_y        membrane
+#   12        dispersion_z        spike
+#   13        dispersion_z        membrane
+#   14        energy_centroid     spike
+#   15        energy_centroid     membrane
+#   16        energy_dispersion   spike
+#   17        energy_dispersion   membrane
+#
+# Submit with:  condor_submit train_snn.sub
+
+universe   = vanilla
+
+executable = /lhome/ext/uovi123/uovi123j/SNN-Cal/SNN/train_snn.sh
+arguments  = $(Process)
+
+log    = /lhome/ext/uovi123/uovi123j/SNN-Cal/SNN/condor_logs/train.log
+output = /lhome/ext/uovi123/uovi123j/SNN-Cal/SNN/condor_logs/train.$(Process).out
+error  = /lhome/ext/uovi123/uovi123j/SNN-Cal/SNN/condor_logs/train.$(Process).err
+
+notify_user  = enrico.lupi@cern.ch
+notification = Always
+
+# ── Resource requests ──────────────────────────────────────────────────────────
+request_cpus   = 4
+request_memory = 16G
+request_disk   = 5G
+
+# Uncomment the lines below if GPU nodes are available and desired:
+request_gpus = 1
+requirements = (GPUs_Capability >= 7.0)
+
+queue 18
